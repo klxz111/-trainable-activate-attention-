@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Experiment artifacts
+checkpoints/
+logs/
+wandb/
+runs/
+*.pth
+*.pt
+*.safetensors
+*.bin
+
+# Data
+data/
+*.arrow
+*.parquet
+
+# Env / IDE
+.env
+.idea/
+.vscode/
+.DS_Store
