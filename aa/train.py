@@ -20,12 +20,13 @@ def main():
     ap.add_argument("--eval-every", type=int, default=200)
     ap.add_argument("--eval-steps", type=int, default=50)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     overrides = json.loads(args.config_json)
     cfg = AAConfig(**overrides)
     device = "cuda"
-    torch.manual_seed(42)
+    torch.manual_seed(args.seed)
     model = AATransformer(cfg).to(device)
     model = torch.compile(model)
     decay, no_decay = [], []
