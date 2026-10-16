@@ -174,6 +174,8 @@ The analysis must account for shared Key and Value computation needed by later t
 
 Train a small causal Transformer, with an initial target of approximately 100M to 300M parameters subject to available compute.
 
+> **执行注记（2026-10-16）**：本地硬件为 RTX 4070 Laptop（8GB），核算后初始规模定为 **30M~50M 参数 + 1~2B tokens**（约 5h/容量点，5 容量点 × 2 seeds ≈ 2~3 天）。matched-active-FLOPs 对比在小规模成立（MoE 文献惯例）。最优配置确定后，视云端租卡预算回补 100M+ 单点验证与曲线加密。
+
 Keep maximum depth fixed. Vary the number of experts \(E\) and active paths \(K\). Compare:
 
 1. Standard Multi Head Attention.
