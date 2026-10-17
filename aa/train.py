@@ -1,5 +1,5 @@
 # aa/train.py
-"""nanoGPT 配方精简版：AdamW(0.9,0.95)+cosine+bf16+grad-accum+checkpointing。"""
+"""nanoGPT 配方精简版：AdamW(0.9,0.95)+cosine+AMP 自适应精度+grad-accum+checkpointing。"""
 import argparse, dataclasses, json, math, os, time
 import torch
 from aa.config import AAConfig
@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--save-every", type=int, default=0, help="每 N 步保存断点 ckpt_last.pt（0=仅结束保存）")
     ap.add_argument("--resume", type=str, default="", help="从 ckpt_last.pt 断点恢复")
+    ap.add_argument("--amp-dtype", choices=["auto", "bf16", "fp16"], default="auto")
     args = ap.parse_args()
 
     overrides = json.loads(args.config_json)
@@ -32,6 +33,15 @@ def main():
     device = "cuda"
     torch.manual_seed(args.seed)
     model = AATransformer(cfg).to(device)
+    # AMP 精度自适应：Turing(SM75, 如 Colab T4) 无 bf16，Ampere(SM80+) 起才有；
+    # fp16 需 GradScaler 防下溢，bf16 无需（scaler disabled 即 no-op，写法统一）
+    major, _ = torch.cuda.get_device_capability(device)
+    if args.amp_dtype == "auto":
+        amp_dtype = torch.bfloat16 if major >= 8 else torch.float16
+    else:
+        amp_dtype = torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=(amp_dtype == torch.float16))
+    print(f"amp: {amp_dtype} (capability {major}.x)", flush=True)
     model = model if args.no_compile else torch.compile(model)
     decay, no_decay = [], []
     for n, p in model.named_parameters():
@@ -57,6 +67,8 @@ def main():
         (model._orig_mod if hasattr(model, "_orig_mod")
          else model).load_state_dict(ck["model"])
         opt.load_state_dict(ck["opt"])
+        if ck.get("scaler"):
+            scaler.load_state_dict(ck["scaler"])
         start_step = ck["step"]
         print(f"resumed from {args.resume} @ step {start_step}", flush=True)
         print("note: DataLoader 从头遍历（数据顺序单遍设计，重读一小段可接受）",
@@ -82,14 +94,16 @@ def main():
             except StopIteration:
                 it = iter(train_dl); x, y = next(it)
             x, y = x.to(device), y.to(device)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("cuda", dtype=amp_dtype):
                 _, loss, aux = model(x, y)
-            (loss / args.accum).backward()
+            scaler.scale(loss / args.accum).backward()
             loss_acc += float(loss) / args.accum
             u = aux["path_usage"].detach().cpu()
             usage_acc = u if usage_acc is None else usage_acc + u
+        scaler.unscale_(opt)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
+        scaler.step(opt)
+        scaler.update()
         if step % args.eval_every == 0 or step == args.steps:
             model.eval()
             with torch.no_grad():
@@ -99,7 +113,7 @@ def main():
                 for i, (x, y) in enumerate(vit):
                     if i >= args.eval_steps: break
                     x, y = x.to(device), y.to(device)
-                    with torch.autocast("cuda", dtype=torch.bfloat16):
+                    with torch.autocast("cuda", dtype=amp_dtype):
                         _, loss, _ = model(x, y)
                     vl += float(loss)
                 vl /= args.eval_steps
@@ -117,11 +131,13 @@ def main():
                 "model": (model._orig_mod if hasattr(model, "_orig_mod")
                           else model).state_dict(),
                 "opt": opt.state_dict(),
+                "scaler": scaler.state_dict(),
                 "step": step,
                 "config": dataclasses.asdict(cfg),
             }, os.path.join(args.out, "ckpt_last.pt"))
     torch.save({"model": (model._orig_mod if hasattr(model, "_orig_mod")
                           else model).state_dict(),
+                "scaler": scaler.state_dict(),
                 "config": dataclasses.asdict(cfg), "step": args.steps},
                os.path.join(args.out, "ckpt.pt"))
     print("saved ->", os.path.join(args.out, "ckpt.pt"))
