@@ -23,6 +23,8 @@ def main():
     ap.add_argument("--no-compile", action="store_true")
     ap.add_argument("--no-shuffle", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--save-every", type=int, default=0, help="每 N 步保存断点 ckpt_last.pt（0=仅结束保存）")
+    ap.add_argument("--resume", type=str, default="", help="从 ckpt_last.pt 断点恢复")
     args = ap.parse_args()
 
     overrides = json.loads(args.config_json)
@@ -49,6 +51,17 @@ def main():
         num_workers=2, pin_memory=True, drop_last=True)
     it = iter(train_dl)
 
+    start_step = 0
+    if args.resume:
+        ck = torch.load(args.resume, map_location=device, weights_only=False)
+        (model._orig_mod if hasattr(model, "_orig_mod")
+         else model).load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"])
+        start_step = ck["step"]
+        print(f"resumed from {args.resume} @ step {start_step}", flush=True)
+        print("note: DataLoader 从头遍历（数据顺序单遍设计，重读一小段可接受）",
+              flush=True)
+
     def lr_at(s):
         if s < args.warmup:
             return s / args.warmup
@@ -58,7 +71,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     metrics = open(os.path.join(args.out, "metrics.jsonl"), "a")
     t0, usage_acc = time.time(), None
-    for step in range(1, args.steps + 1):
+    for step in range(start_step + 1, args.steps + 1):
         for g in opt.param_groups:
             g["lr"] = args.lr * lr_at(step)
         opt.zero_grad(set_to_none=True)
@@ -99,6 +112,14 @@ def main():
             metrics.write(json.dumps(row) + "\n"); metrics.flush()
             print(json.dumps(row), flush=True)
             usage_acc = None
+        if args.save_every > 0 and step % args.save_every == 0:
+            torch.save({
+                "model": (model._orig_mod if hasattr(model, "_orig_mod")
+                          else model).state_dict(),
+                "opt": opt.state_dict(),
+                "step": step,
+                "config": dataclasses.asdict(cfg),
+            }, os.path.join(args.out, "ckpt_last.pt"))
     torch.save({"model": (model._orig_mod if hasattr(model, "_orig_mod")
                           else model).state_dict(),
                 "config": dataclasses.asdict(cfg), "step": args.steps},
