@@ -33,10 +33,13 @@ def main():
     decay, no_decay = [], []
     for n, p in model.named_parameters():
         (decay if p.dim() >= 2 else no_decay).append(p)
-    opt = torch.optim.AdamW(
-        [{"params": decay, "weight_decay": 0.1},
-         {"params": no_decay, "weight_decay": 0.0}], lr=args.lr,
-        betas=(0.9, 0.95))
+    groups = [{"params": decay, "weight_decay": 0.1},
+              {"params": no_decay, "weight_decay": 0.0}]
+    try:
+        opt = torch.optim.AdamW(groups, lr=args.lr, betas=(0.9, 0.95),
+                                fused=True)
+    except (TypeError, RuntimeError):
+        opt = torch.optim.AdamW(groups, lr=args.lr, betas=(0.9, 0.95))
     train_ds = BinDataset(os.path.join(args.data, "train.bin"), cfg.block_size)
     val_ds = BinDataset(os.path.join(args.data, "val.bin"), cfg.block_size)
     train_dl = torch.utils.data.DataLoader(

@@ -47,16 +47,37 @@ class AATransformer(nn.Module):
         aux["path_usage"] = torch.stack(usages)          # [L, E]
         aux["mean_entropy"] = sum(entropies) / len(entropies)
         x = self.ln_f(x)
-        logits = self.lm_head(x)
         if targets is not None:
-            loss = F.cross_entropy(
-                logits.view(-1, logits.size(-1)), targets.reshape(-1))
+            loss = self._chunked_loss(x, targets)
+            logits = None
         else:
+            # 无 targets 时返回全长 logits [B, T, V]：
+            # test_rope_causality_end_to_end 依赖 l[:, :40] 语义为前 40 个位置
+            # （若只取末位 x[:, -1:, :]，末位本身被篡改，因果性断言无意义）。
+            logits = self.lm_head(x)
             loss = None
-        # 无 targets 时也返回全长 logits [B, T, V]：
-        # test_rope_causality_end_to_end 依赖 l[:, :40] 语义为前 40 个位置
-        # （若只取末位 x[:, -1:, :]，末位本身被篡改，因果性断言无意义）。
         return logits, loss, aux
+
+    def _chunked_loss(self, x, targets, chunk=256):
+        """分块 lm_head+CE，每块用 checkpoint 包裹：backward 重算 logits，
+        logits 峰值显存从 [B,T,V] 降到 [B,chunk,V]（E16 OOM 的最后大头）。"""
+        from torch.utils.checkpoint import checkpoint
+        B, T = x.shape[:2]
+        total = x.new_zeros((), dtype=torch.float32)
+        n = 0
+        for i in range(0, T, chunk):
+            xc, tc = x[:, i:i + chunk], targets[:, i:i + chunk]
+
+            def _ce(xc=xc, tc=tc):
+                logits = self.lm_head(xc).float()
+                return F.cross_entropy(logits.reshape(-1, logits.size(-1)),
+                                       tc.reshape(-1), reduction="sum")
+
+            total = total + (checkpoint(_ce, use_reentrant=False)
+                             if self.training and torch.is_grad_enabled()
+                             else _ce())
+            n += tc.numel()
+        return total / n
 
 
 def count_params(model, active_only: bool = False) -> int:

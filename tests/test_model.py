@@ -9,7 +9,9 @@ def test_forward_shapes_and_loss():
     m = AATransformer(c)
     idx = torch.randint(0, 256, (2, 64))
     logits, loss, aux = m(idx, targets=idx)
-    assert logits.shape == (2, 64, 256) and loss is not None
+    # 分块 CE 后训练路径不再物化全长 logits（E16 显存优化的核心契约）；
+    # 无 targets 分支仍返回全长 logits（因果性测试依赖）。
+    assert logits is None and loss is not None
     assert "path_usage" in aux
 
 def test_tied_embedding_param_count():
