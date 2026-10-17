@@ -1,0 +1,10 @@
+{
+  "id": "hangyulv/aa-aa16-s42",
+  "title": "aa aa16-s42",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "enable_gpu": true,
+  "enable_internet": true,
+  "is_private": true
+}
