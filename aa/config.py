@@ -13,6 +13,7 @@ class AAConfig:
     vocab_size: int = 50257
     block_size: int = 1024
     dropout: float = 0.0
+    grad_checkpoint: bool = False
 
     @property
     def head_dim(self) -> int:

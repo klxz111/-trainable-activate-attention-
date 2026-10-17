@@ -53,6 +53,7 @@ class SharedKVPathAttention(nn.Module):
         for p in self.paths:
             p.n_head, p.head_dim = config.n_head, config.head_dim
         self.resid_dropout = nn.Dropout(config.dropout)
+        self.grad_checkpoint = config.grad_checkpoint
 
     def attn_params(self, active_only: bool = False):
         """attention 参数遍历。active_only=True 只数 K=1 激活口径
@@ -73,14 +74,23 @@ class SharedKVPathAttention(nn.Module):
             return [p(x, rope, shared_k=k, shared_v=v) for p in self.paths]
         return [p(x, rope) for p in self.paths]
 
-    def forward(self, x, rope):
+    def _mix_paths(self, x, weights, idx, rope):
+        """贵的部分：E 路径 attention + gather 加权混合。可整体进重算区。"""
         B, T, d = x.shape
-        weights, idx, rstats = self.router(x)          # [B,T,K]
         outs = self.path_outputs(x, rope)              # E × [B,T,d]
         stacked = torch.stack(outs, dim=-2)            # [B,T,E,d]
         gather_idx = idx.unsqueeze(-1).expand(-1, -1, -1, d)
         sel = stacked.gather(-2, gather_idx)           # [B,T,K,d]
-        y = (sel * weights.unsqueeze(-1)).sum(-2)      # [B,T,d]
+        return (sel * weights.unsqueeze(-1)).sum(-2)   # [B,T,d]
+
+    def forward(self, x, rope):
+        B, T, d = x.shape
+        weights, idx, rstats = self.router(x)          # [B,T,K]（router 便宜，且 stats 是 dict，不进 checkpoint）
+        if self.grad_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+            y = checkpoint(self._mix_paths, x, weights, idx, rope, use_reentrant=False)
+        else:
+            y = self._mix_paths(x, weights, idx, rope)
         usage = torch.zeros(self.config.n_paths, device=x.device)
         usage.scatter_add_(0, idx.reshape(-1),
                            torch.ones(idx.numel(), device=x.device))
