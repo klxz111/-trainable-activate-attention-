@@ -20,6 +20,7 @@ def main():
     ap.add_argument("--eval-every", type=int, default=200)
     ap.add_argument("--eval-steps", type=int, default=50)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--no-compile", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -28,7 +29,7 @@ def main():
     device = "cuda"
     torch.manual_seed(args.seed)
     model = AATransformer(cfg).to(device)
-    model = torch.compile(model)
+    model = model if args.no_compile else torch.compile(model)
     decay, no_decay = [], []
     for n, p in model.named_parameters():
         (decay if p.dim() >= 2 else no_decay).append(p)
