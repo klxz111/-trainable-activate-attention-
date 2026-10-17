@@ -18,7 +18,7 @@ if not os.path.exists("data/owt1b/train.bin"):
 
 RUN_TAG = "{{RUN_TAG}}"
 SEED = "{{SEED}}"
-EXTRA = "{{EXTRA}}"          # 例如 "n_paths":8,... 
+EXTRA = {{EXTRA}}          # 例如 "n_paths":8,... 
 CKPT = "true" if RUN_TAG.startswith("aa16") else "false"
 STEPS = os.environ.get("STEPS", "15300")
 

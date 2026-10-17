@@ -18,7 +18,7 @@ if not os.path.exists("data/owt1b/train.bin"):
 
 RUN_TAG = "aa16_s42"
 SEED = "42"
-EXTRA = ""n_paths":16,"n_active":1,"shared_kv":true,"router_mode":"ste""          # 例如 "n_paths":8,... 
+EXTRA = '"n_paths":16,"n_active":1,"shared_kv":true,"router_mode":"ste"'          # 例如 "n_paths":8,... 
 CKPT = "true" if RUN_TAG.startswith("aa16") else "false"
 STEPS = os.environ.get("STEPS", "15300")
 

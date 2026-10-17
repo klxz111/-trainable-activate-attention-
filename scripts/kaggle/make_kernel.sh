@@ -7,9 +7,10 @@ set -e
 cd "$(dirname "$0")"
 TAG="$1"; SEED="$2"
 case "$TAG" in
-  aa8_*)   EXTRA='"n_paths":8,"n_active":1,"shared_kv":true,"router_mode":"ste"' ;;
-  aa16_*)  EXTRA='"n_paths":16,"n_active":1,"shared_kv":true,"router_mode":"ste"' ;;
-  moa4_*)  EXTRA='"n_paths":4,"n_active":1,"shared_kv":false,"router_mode":"ste"' ;;
+  # EXTRA 替换值须是合法 Python 字面量（单引号包裹的 JSON 片段）
+  aa8_*)   EXTRA="'\"n_paths\":8,\"n_active\":1,\"shared_kv\":true,\"router_mode\":\"ste\"'" ;;
+  aa16_*)  EXTRA="'\"n_paths\":16,\"n_active\":1,\"shared_kv\":true,\"router_mode\":\"ste\"'" ;;
+  moa4_*)  EXTRA="'\"n_paths\":4,\"n_active\":1,\"shared_kv\":false,\"router_mode\":\"ste\"'" ;;
   *) echo "unknown tag"; exit 1 ;;
 esac
 D="$TAG"
