@@ -21,7 +21,7 @@ def main():
     ap.add_argument("--eval-steps", type=int, default=50)
     ap.add_argument("--out", required=True)
     ap.add_argument("--no-compile", action="store_true")
-    ap.add_argument("--no-shuffle", action="store_true")
+    ap.add_argument("--shuffle", action="store_true", help="数据洗牌（默认顺序遍历；9.5亿窗口 randperm 需 7.6GB host RAM，单遍预训练无需开启）")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--save-every", type=int, default=0, help="每 N 步保存断点 ckpt_last.pt（0=仅结束保存）")
     ap.add_argument("--resume", type=str, default="", help="从 ckpt_last.pt 断点恢复")
@@ -57,7 +57,7 @@ def main():
     val_ds = BinDataset(os.path.join(args.data, "val.bin"), cfg.block_size)
     train_dl = torch.utils.data.DataLoader(
         train_ds, batch_size=args.micro_batch,
-        shuffle=(not args.no_shuffle),
+        shuffle=args.shuffle,
         num_workers=2, pin_memory=True, drop_last=True)
     it = iter(train_dl)
 
