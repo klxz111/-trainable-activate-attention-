@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--eval-steps", type=int, default=50)
     ap.add_argument("--out", required=True)
     ap.add_argument("--no-compile", action="store_true")
+    ap.add_argument("--no-shuffle", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -43,7 +44,8 @@ def main():
     train_ds = BinDataset(os.path.join(args.data, "train.bin"), cfg.block_size)
     val_ds = BinDataset(os.path.join(args.data, "val.bin"), cfg.block_size)
     train_dl = torch.utils.data.DataLoader(
-        train_ds, batch_size=args.micro_batch, shuffle=True,
+        train_ds, batch_size=args.micro_batch,
+        shuffle=(not args.no_shuffle),
         num_workers=2, pin_memory=True, drop_last=True)
     it = iter(train_dl)
 

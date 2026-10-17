@@ -1,12 +1,19 @@
 #!/bin/bash
-# scripts/run_sweep.sh — RQ1 主曲线：12 个 run ≈ 36h（单卡顺序，可拆分）
+# scripts/run_sweep.sh — RQ1 主曲线：12 run。
+# 统一配置（消除臂间执行差异对 matched-compute 对比的干扰）：
+#   --no-compile          E16 大图编译期 RAM 爆（WSL 11GB 上限）
+#   grad_checkpoint=true  E16 激活显存（8GB 卡）
+#   mb8/accum8            mb16 下 logits+激活超 8GB
+#   --no-shuffle          9.5 亿窗口的 randperm 需 7.6GB host 内存（OOM 根因）
+#   effective batch = 8×8 = 64，与 Task 7 冒烟口径一致
 set -e
 cd "$(dirname "$0")/.."
-CFG='{"n_layer":8,"n_embd":512,"n_head":8,"block_size":1024'
+CFG='{"n_layer":8,"n_embd":512,"n_head":8,"block_size":1024,"grad_checkpoint":true'
 STEPS=15300
+FLAGS="--no-compile --no-shuffle --micro-batch 8 --accum 8"
 run() {  # $1=tag $2=extra-json $3=seed
   conda run -n aa python -m aa.train --data data/owt1b --steps $STEPS \
-    --micro-batch 16 --accum 4 --eval-every 500 --seed $3 \
+    $FLAGS --eval-every 500 --seed $3 \
     --config-json "$CFG,$2}" --out runs/sweep_$1_s$3
 }
 # 臂 1: dense
